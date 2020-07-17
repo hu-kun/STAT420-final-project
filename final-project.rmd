@@ -1,0 +1,29 @@
+---
+title: 'Final Project'
+author: "STAT 420, Summer 2020,"
+date: '07/17/2020'
+output:
+  html_document: 
+    theme: readable
+    toc: yes  
+  pdf_document: default
+urlcolor: cyan
+---
+
+***
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+library(knitr)
+opts_chunk$set(cache = TRUE, autodep = TRUE)
+library(tidyverse)
+```
+
+
+```{r}
+suicide <- read.csv('master.csv') %>%
+  as_tibble(.)
+summary(suicide)
+suicide
+```
+
