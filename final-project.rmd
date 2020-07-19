@@ -1,7 +1,7 @@
 ---
-title: 'Final Project'
-author: "STAT 420, Summer 2020,"
-date: '07/17/2020'
+title: 'Correlation of Location, Year, Economic Status, and Demographic Information with Suicide Rate'
+author: "STAT 420, Summer 2020, Kun Hu, Madeline Old, Yuwen Xiang, Patrick Willhalm"
+date: '07/18/2020'
 output:
   html_document: 
     theme: readable
@@ -9,6 +9,19 @@ output:
   pdf_document: default
 urlcolor: cyan
 ---
+
+# Description of data file
+
+This file compares the number of suicides per 100,000 across categories stratified by age group, sex, country, and year. There are 27820 observations across 12 variables. Variables include country, year, sex, age group, number of suicides,  suicide rate, Human Development Index (HDI) and Gross Domestic Product (GDP).
+
+# Background on the data set
+
+This dataset is a compilation of data from the UN Development Program, World Bank, and the World Health Organization. https://www.kaggle.com/russellyates88/suicide-rates-overview-1985-to-2016
+
+# Statement of Interest
+
+Suicide is unique as a public health issue in that it is 100% preventable. Stopping deaths from cancer requires developing new cancer drugs, but suicide is a social and economic rather than technical problem. Here we intend to find the correlation among different social status (includes year, sex and age) and the economic situation with the suicide rate with an eye toward suicide prevention. Depending on social status, we may find some causal links with suicide risk.
+
 
 ***
 
