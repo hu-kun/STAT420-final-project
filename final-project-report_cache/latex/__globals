@@ -1,0 +1,2 @@
+unnamed-chunk-1	!	$	$<-	%>%	.	[<-	==	add_column	as_tibble	for	gdp_for_year....	gdp_per_capita....	HDI.for.year	head	ï..country	nrow	one_of	read.csv	rename	rep	select	sum	unique
+unnamed-chunk-2	$	%>%	[<-	==	aes	c	country.year	distinct	for	gdp_per_capita	gdp_year	geom_line	geom_point	ggplot	length	sort	suicide	suicide_year	sum	unique

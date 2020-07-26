@@ -1,0 +1,95 @@
+---
+title: 'Correlation of Location, Year, Economic Status, and Demographic Information with Suicide Rate'
+author: "STAT 420, Summer 2020, Kun Hu, Madeline Old, Yuwen Xiang, Patrick Willhalm"
+date: '07/18/2020'
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document: 
+    theme: readable
+    toc: yes  
+urlcolor: cyan
+---
+
+
+***
+
+```{r setup, echo <- FALSE, message <- FALSE, warning <- FALSE}
+library(tidyverse)
+library(knitr)
+
+options(scipen = 1, digits = 4, width = 80)
+opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+
+
+```{r}
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+suicide <- read.csv('master.csv') %>%
+  as_tibble(.)
+
+n <- nrow(suicide)
+buffer <- rep(0, n)
+
+sex <- buffer
+sex[suicide$sex == 'male'] <- 1
+
+age <- buffer
+age[suicide$age == '5-14 years'] <- 10
+age[suicide$age == '15-24 years'] <- 20
+age[suicide$age == '25-34 years'] <- 30
+age[suicide$age == '35-54 years'] <- 45
+age[suicide$age == '55-74 years'] <- 65
+age[suicide$age == '75+ years'] <- 85
+
+suicide <- suicide %>%
+  select(-one_of('age', 'sex')) %>%
+  add_column(age, sex) %>%
+  rename(gdp_year = gdp_for_year...., 
+         gdp_per_capita = gdp_per_capita...., 
+         country = ï..country, 
+         hdi_year = HDI.for.year)
+
+suicide$suicide_year <- buffer
+suicide$suicide_year_female <- buffer
+suicide$suicide_year_male <- buffer
+suicide$population_year <- buffer
+
+for (country_year in unique(suicide$country.year)) {
+  data_curr <- suicide[suicide$country.year == country_year,]
+  
+  suicide_year_curr <- sum(data_curr$suicides_no)
+  suicide_year_female_curr <- sum(data_curr[data_curr$sex == 0,]$suicides_no)
+  suicide_year_male_curr <- sum(data_curr[data_curr$sex == 1,]$suicides_no)
+  population_year_curr <- sum(data_curr[data_curr$sex == 1,]$population)
+  
+  suicide[suicide$country.year == country_year,]$suicide_year <- suicide_year_curr
+  suicide[suicide$country.year == country_year,]$suicide_year_female <- suicide_year_female_curr
+  suicide[suicide$country.year == country_year,]$suicide_year_male <- suicide_year_male_curr
+  suicide[suicide$country.year == country_year,]$population_year <- population_year_curr
+}
+
+head(suicide)
+```
+
+```{r}
+df_suicide_gdp <- suicide %>%
+  distinct(country.year, .keep_all = TRUE)
+
+ggplot(df_suicide_gdp) +
+  geom_point(aes(x = gdp_per_capita, y = suicide_year))
+
+ggplot(df_suicide_gdp) +
+  geom_point(aes(x = gdp_year, y = suicide_year))
+
+list_year = sort(unique(df_suicide_gdp$year))
+suicide_by_year <- c()
+for (year in list_year) {
+  suicide_by_year[length(suicide_by_year) + 1] <- sum(df_suicide_gdp[df_suicide_gdp$year == year,]$suicide_year)
+}
+
+ggplot() +
+  geom_line(aes(x = list_year, y = suicide_by_year))
+```
+
