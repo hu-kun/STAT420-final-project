@@ -10,7 +10,7 @@ bp test:
 ```{r, warning=FALSE}
 bp_test_decision = function(model, alpha){
   decide = unname(bptest(model)$p.value < alpha)
-  ifelse(decide, "Reject", "Fail to Reject"
+  ifelse(decide, "Reject", "Fail to Reject")
 }
 ```
 
@@ -19,7 +19,7 @@ shapiro test:
 ```{r, warning=FALSE}
 shapiro_test_decision = function(model, alpha){
   decide = unname(shapiro.test(resid(model))$p.value < alpha)
-  ifelse(decide, "Reject", "Fail to Reject"
+  ifelse(decide, "Reject", "Fail to Reject")
 }
 ```
 
@@ -37,6 +37,14 @@ loocv rmse:
 ```{r, warning=FALSE}
 calc_loocv_rmse = function(model){
   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+rmse
+
+```{r}
+calc_rmse = function(actual, predicted) {
+  sqrt(sum((actual - predicted)^2) / length(actual)) 
 }
 ```
 
