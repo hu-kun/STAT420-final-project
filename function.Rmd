@@ -1,0 +1,74 @@
+---
+title: "function"
+author: "Yuwen Xiang, yuwenx3"
+date: "8/5/2020"
+output: html_document
+---
+
+bp test:
+
+```{r, warning=FALSE}
+bp_test_decision = function(model, alpha){
+  decide = unname(bptest(model)$p.value < alpha)
+  ifelse(decide, "Reject", "Fail to Reject"
+}
+```
+
+shapiro test:
+
+```{r, warning=FALSE}
+shapiro_test_decision = function(model, alpha){
+  decide = unname(shapiro.test(resid(model))$p.value < alpha)
+  ifelse(decide, "Reject", "Fail to Reject"
+}
+```
+
+cook's distance:
+
+```{r, warning=FALSE}
+cooks_distance_inf = function(model){
+  mods_cd = cooks.distance(model)
+  ifelse(mods_cd > 4/length(resid(model)), "Influential", "Not influential")
+}
+```
+
+loocv rmse:
+
+```{r, warning=FALSE}
+calc_loocv_rmse = function(model){
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+p value for t test:
+
+```{r, warning=FALSE}
+get_t_pval = function(model){
+  summary(model)$coefficients[,"Pr(>|t|)"]
+}
+```
+
+p value for f test:
+
+```{r, warning=FALSE}
+get_f_pval = function(model1, model2){
+  anova(model1, model2)[2,"Pr(>F)"]
+}
+```
+
+adj r2:
+
+```{r, warning=FALSE }
+get_adj_r2 = function(model){
+  summary(model)$adj.r.squared
+}
+```
+
+r2:
+
+```{r, warning=FALSE}
+get_r2 = function(model){
+  summary(model)$r.squared
+}
+```
+
