@@ -35,6 +35,7 @@ Suicide is unique as a public health issue in that it is 100% preventable. Stopp
 
 # Methods
 
+## Load packages and the data
 ```{r setup, echo <- FALSE, message <- FALSE, warning <- FALSE}
 library(tidyverse)
 library(knitr)
@@ -48,10 +49,86 @@ suicide <- read.csv('master.csv') %>%
   as_tibble(.)
 ```
 
+## Define functions for statistical tests
+```{r, warning=FALSE}
+bp_test_decision = function(model, alpha){
+  decide = unname(bptest(model)$p.value < alpha)
+  ifelse(decide, "Reject", "Fail to Reject")
+}
 
-```{r}
+shapiro_test_decision = function(model, alpha){
+  decide = unname(shapiro.test(resid(model))$p.value < alpha)
+  ifelse(decide, "Reject", "Fail to Reject")
+}
+
+cooks_distance_inf = function(model){
+  mods_cd = cooks.distance(model)
+  ifelse(mods_cd > 4/length(resid(model)), "Influential", "Not influential")
+}
+
+calc_loocv_rmse = function(model){
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+
+calc_rmse = function(actual, predicted) {
+  sqrt(sum((actual - predicted)^2) / length(actual)) 
+}
+
+get_t_pval = function(model){
+  summary(model)$coefficients[,"Pr(>|t|)"]
+}
+
+get_f_pval = function(model1, model2){
+  anova(model1, model2)[2,"Pr(>F)"]
+}
+
+get_adj_r2 = function(model){
+  summary(model)$adj.r.squared
+}
+
+get_r2 = function(model){
+  summary(model)$r.squared
+}
+
+get_all <- function(model) {
+  bp <- bp_test_decision(model, 0.05)
+  shaprio <- shapiro_test_decision(model, 0.05)
+  cook <- cooks_distance_inf(model)
+  loocv <- calc_loocv_rmse(model)
+  r2 <- get_r2(model)
+  r2_adj <- get_adj_r2(model)
+  
+  results <- data.frame("BP test decision" = bp,
+                        "Shapiro test decision" = shaprio,
+                        "Cook's Distance" = cooks,
+                        "LOOCV RMSE" = loocv,
+                        "R-squared" = r2,
+                        "Adjusted R-squared" = r2_adj)
+  
+  return(results)
+}
+
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
+qq_plot <- function(model, pcol = 'grey', lcol = 'dodgerblue') {
+  p1 <- ggplot() +
+    geom_point(aes(x = fitted(model), y = resid(model)), color = pcol) +
+    geom_hline(yintercept = 0, color = lcol) +
+    labs(x = "Fitted", y = "Residuals", title = "Fitted versus Residuals") +
+    theme_light()
+  
+  p2 <- ggplot(data.frame(y = resid(model)), aes(sample = y)) + 
+    stat_qq(color = pcol) + 
+    stat_qq_line(color = lcol) +
+    labs(x = "Theoretical", y = "Sample", title = "Normal Q-Q Plot") +
+    theme_light()
+  
+  ggarrange(p1, p2, ncol = 2)
+}
+```
+
+## Data cleaning
+```{r}
 n <- nrow(suicide)
 buffer <- rep(0, n)
 
@@ -98,6 +175,29 @@ suicide$gdp_year = as.numeric(gsub(",", "", suicide$gdp_year))
 head(suicide)
 ```
 
+## Pre-analysis
+```{r}
+par(mfrow = c(2,3))
+hist(suicide$suicides_no, breaks = 20, main = "Number of suicide",border="darkorange", col="dodgerblue")
+hist(suicide$population, breaks = 20, main = "Population",border="darkorange", col="dodgerblue")
+hist(suicide$suicides.100k.pop, breaks = 20, main = "Suicides per 100k people",border="darkorange", col="dodgerblue")
+
+## Pie plot
+hist(suicide$age, breaks = 20, main = "Age group",border="darkorange", col="dodgerblue")
+hist(as.numeric(suicide$generation), breaks = 20, main = "Generation",border="darkorange", col="dodgerblue")
+hist(as.numeric(suicide$sex), breaks = 10, main = "Sex",border="darkorange", col="dodgerblue")
+
+## Trends with year (suicide number and GDP)
+
+
+suicide %>%
+  select(one_of('year', 'suicide_no', 'population', 'suicides.100k.pop', 'gdp_year', 'gdp_per_capita')) %>%
+  pairs(col = 'darkorange')
+
+plot(log(suicide$gdp_per_capita), suicide$hdi_year)
+```
+
+
 ```{r}
 df_suicide_gdp <- suicide %>%
   distinct(country.year, .keep_all = TRUE)
@@ -118,8 +218,10 @@ ggplot() +
   geom_line(aes(x = list_year, y = suicide_by_year))
 ```
 
+## Modelling
 ```{r}
 suicide$sex = as.factor(suicide$sex)
+suicide$generation = as.factor(suicide$generation)
 
 m0_suicide <- lm(suicides.100k.pop ~ population + gdp_year + age + sex + log(gdp_per_capita), data = suicide)
 
@@ -137,37 +239,32 @@ m3_suicide <- lm(suicides.100k.pop ~ I(population ^ -1) + gdp_year + age + sex +
 
 m3_suicide_aic <- step(m0_suicide, trace = 0, k = log(n), direction = 'backward')
 
+model1 = lm(suicides.100k.pop ~ suicides_no + hdi_year + gdp_year + generation + age + sex + population, data = suicide)
+selected1 = step(model1, direction = "backward", trace = FALSE)
+
+#so far it is the best one
+model2 = lm(suicides.100k.pop ~ suicides_no * hdi_year * gdp_year * generation * age * sex * population, data = suicide)
+selected2 = step(model2, direction = "backward", trace = FALSE)
+
+model3 = lm(suicides.100k.pop ~ gdp_per_capita * age * sex, data = suicide )
+selected3 = step(model3, direction = "backward", trace = FALSE)
+
+model4 = lm(suicides.100k.pop ~ sex * age * gdp_per_capita * generation, data = suicide)
+selected4 = step(model4, direction = "backward", trace = FALSE)
+
 vif(m0_suicide)
 ```
 
 
 ```{r}
-suicide %>%
-  select(one_of('year', 'suicide_no', 'population', 'suicides.100k.pop', 'gdp_year', 'gdp_per_capita')) %>%
-  pairs(col = 'darkorange')
 
-plot(log(suicide$gdp_per_capita), suicide$hdi_year)
 
 m_hdi_gdp <- lm(hdi_year ~ log(gdp_per_capita), data = suicide)
 summary(m_hdi_gdp)$adj.r.squared
 ```
 
 ```{r}
-qq_plot <- function(model, pcol = 'grey', lcol = 'dodgerblue') {
-  p1 <- ggplot() +
-    geom_point(aes(x = fitted(model), y = resid(model)), color = pcol) +
-    geom_hline(yintercept = 0, color = lcol) +
-    labs(x = "Fitted", y = "Residuals", title = "Fitted versus Residuals") +
-    theme_light()
-  
-  p2 <- ggplot(data.frame(y = resid(model)), aes(sample = y)) + 
-    stat_qq(color = pcol) + 
-    stat_qq_line(color = lcol) +
-    labs(x = "Theoretical", y = "Sample", title = "Normal Q-Q Plot") +
-    theme_light()
-  
-  ggarrange(p1, p2, ncol = 2)
-}
+
 
 qq_plot(m3_suicide)
 ```
