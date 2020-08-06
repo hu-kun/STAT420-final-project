@@ -13,21 +13,44 @@ urlcolor: cyan
 
 
 ***
+# Introduction
+
+This file compares the number of suicides per 100,000 across categories stratified by age group, sex, country, and year. There are 27820 observations across 12 variables. Variables include:
+
+* country
+* year
+* sex
+* age group
+* number of suicides  
+* population
+* suicides per 100k people
+* Human Development Index (HDI)
+* Gross Domestic Product (GDP)
+* GDP per capita
+
+
+This dataset is a compilation of data from the UN Development Program, World Bank, and the World Health Organization. We found the data online at [https://www.kaggle.com/russellyates88/suicide-rates-overview-1985-to-2016](https://www.kaggle.com/russellyates88/suicide-rates-overview-1985-to-2016)
+
+Suicide is unique as a public health issue in that it is 100% preventable. Stopping deaths from cancer requires developing new cancer drugs, but suicide is a social and economic rather than technical problem. Here we intend to find the correlation among different social status (includes year, sex and age) and the economic situation with the suicide rate with an eye toward suicide prevention. Depending on social status, we may find some causal links with suicide risk.
+
+# Methods
 
 ```{r setup, echo <- FALSE, message <- FALSE, warning <- FALSE}
 library(tidyverse)
 library(knitr)
+library(faraway)
+library(ggpubr)
 
 options(scipen = 1, digits = 4, width = 80)
 opts_chunk$set(cache = TRUE, autodep = TRUE)
+
+suicide <- read.csv('master.csv') %>%
+  as_tibble(.)
 ```
 
 
 ```{r}
 '%!in%' <- function(x,y)!('%in%'(x,y))
-
-suicide <- read.csv('master.csv') %>%
-  as_tibble(.)
 
 n <- nrow(suicide)
 buffer <- rep(0, n)
@@ -70,6 +93,8 @@ for (country_year in unique(suicide$country.year)) {
   suicide[suicide$country.year == country_year,]$population_year <- population_year_curr
 }
 
+suicide$gdp_year = as.numeric(gsub(",", "", suicide$gdp_year))
+
 head(suicide)
 ```
 
@@ -92,4 +117,69 @@ for (year in list_year) {
 ggplot() +
   geom_line(aes(x = list_year, y = suicide_by_year))
 ```
+
+```{r}
+suicide$sex = as.factor(suicide$sex)
+
+m0_suicide <- lm(suicides.100k.pop ~ population + gdp_year + age + sex + log(gdp_per_capita), data = suicide)
+
+m0_suicide_aic <- step(m0_suicide, trace = 0)
+
+m1_suicide <- lm(suicides.100k.pop ~ (population + gdp_year + age + sex + log(gdp_per_capita)) ^ 5, data = suicide)
+
+m1_suicide_aic <- step(m1_suicide, trace = 0)
+
+m2_suicide <- lm(suicides.100k.pop ~ (population + gdp_year + age + sex + log(population) + log(gdp_year) + log(age)) ^ 2, data = suicide)
+
+m2_suicide_aic <- step(m2_suicide, trace = 0)
+
+m3_suicide <- lm(suicides.100k.pop ~ I(population ^ -1) + gdp_year + age + sex + log(gdp_per_capita), data = suicide)
+
+m3_suicide_aic <- step(m0_suicide, trace = 0, k = log(n), direction = 'backward')
+
+vif(m0_suicide)
+```
+
+
+```{r}
+suicide %>%
+  select(one_of('year', 'suicide_no', 'population', 'suicides.100k.pop', 'gdp_year', 'gdp_per_capita')) %>%
+  pairs(col = 'darkorange')
+
+plot(log(suicide$gdp_per_capita), suicide$hdi_year)
+
+m_hdi_gdp <- lm(hdi_year ~ log(gdp_per_capita), data = suicide)
+summary(m_hdi_gdp)$adj.r.squared
+```
+
+```{r}
+qq_plot <- function(model, pcol = 'grey', lcol = 'dodgerblue') {
+  p1 <- ggplot() +
+    geom_point(aes(x = fitted(model), y = resid(model)), color = pcol) +
+    geom_hline(yintercept = 0, color = lcol) +
+    labs(x = "Fitted", y = "Residuals", title = "Fitted versus Residuals") +
+    theme_light()
+  
+  p2 <- ggplot(data.frame(y = resid(model)), aes(sample = y)) + 
+    stat_qq(color = pcol) + 
+    stat_qq_line(color = lcol) +
+    labs(x = "Theoretical", y = "Sample", title = "Normal Q-Q Plot") +
+    theme_light()
+  
+  ggarrange(p1, p2, ncol = 2)
+}
+
+qq_plot(m3_suicide)
+```
+
+
+# Results
+
+# Discussion
+
+# Appendix
+
+
+
+
 
