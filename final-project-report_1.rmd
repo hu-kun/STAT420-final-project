@@ -1,0 +1,362 @@
+---
+title: 'Correlation of Location, Year, Economic Status, and Demographic Information with Suicide Rate'
+author: "STAT 420, Summer 2020, Kun Hu, Madeline Old, Yuwen Xiang, Patrick Willhalm"
+date: '07/18/2020'
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_document: 
+    theme: readable
+    toc: yes  
+urlcolor: cyan
+---
+
+
+***
+# Introduction
+
+This file compares the number of suicides per 100,000 across categories stratified by age group, sex, country, and year. There are 27820 observations across 12 variables. Variables include:
+
+* country
+* year
+* sex
+* age group
+* number of suicides  
+* population
+* suicides per 100k people
+* Human Development Index (HDI)
+* Gross Domestic Product (GDP)
+* GDP per capita
+
+
+This dataset is a compilation of data from the UN Development Program, World Bank, and the World Health Organization. We found the data online at [https://www.kaggle.com/russellyates88/suicide-rates-overview-1985-to-2016](https://www.kaggle.com/russellyates88/suicide-rates-overview-1985-to-2016)
+
+Suicide is unique as a public health issue in that it is 100% preventable. Stopping deaths from cancer requires developing new cancer drugs, but suicide is a social and economic rather than technical problem. Here we intend to find the correlation among different social status (includes year, sex and age) and the economic situation with the suicide rate with an eye toward suicide prevention. Depending on social status, we may find some causal links with suicide risk.
+
+# Methods
+
+## Load packages and the data
+```{r setup, echo <- FALSE, message <- FALSE, warning <- FALSE}
+library(tidyverse)
+library(knitr)
+library(faraway)
+library(ggpubr)
+library(lmtest)
+
+options(scipen = 1, digits = 4, width = 80)
+opts_chunk$set(cache = TRUE, autodep = TRUE)
+
+suicide <- read.csv('master.csv') %>%
+  as_tibble(.)
+```
+
+## Define functions for statistical tests
+
+Here we prepared some functions for statistical tests we are going to do below. Meanwhile, we have functions to extract R-squared and adjusted R-squared values, T-test statistics and F-test statistics from ANOVA test. Finally, we also have a fundtion to wrap all the results up into one data frame, so later we will be able to have all the results stored in the same place. The qq-plot function would generate fitted vs. residuals and Q-Q plot. 
+```{r, warning=FALSE}
+bp_test_decision = function(model, alpha){
+  decide = unname(bptest(model)$p.value < alpha)
+  ifelse(decide, "Reject", "Fail to Reject")
+}
+
+cooks_distance_inf = function(model){
+  mods_cd = cooks.distance(model)
+  sum(ifelse(mods_cd > 4/length(resid(model)), 1, 0))
+}
+
+calc_loocv_rmse = function(model){
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+
+calc_rmse = function(actual, predicted) {
+  sqrt(sum((actual - predicted)^2) / length(actual)) 
+}
+
+get_t_pval = function(model){
+  summary(model)$coefficients[,"Pr(>|t|)"]
+}
+
+get_f_pval = function(model1, model2){
+  anova(model1, model2)[2,"Pr(>F)"]
+}
+
+get_adj_r2 = function(model){
+  summary(model)$adj.r.squared
+}
+
+get_r2 = function(model){
+  summary(model)$r.squared
+}
+
+get_all <- function(model) {
+  bp <- bp_test_decision(model, 0.05)
+  cooks <- cooks_distance_inf(model)
+  loocv <- calc_loocv_rmse(model)
+  r2 <- get_r2(model)
+  r2_adj <- get_adj_r2(model)
+  
+  results <- data.frame("BP test decision" = bp,
+                        "Cook's Distance" = cooks,
+                        "LOOCV RMSE" = loocv,
+                        "R-squared" = r2,
+                        "Adjusted R-squared" = r2_adj)
+  
+  row.names(results) <- deparse(substitute(model))
+  
+  return(results)
+}
+
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
+qq_plot <- function(model, pcol = 'grey', lcol = 'dodgerblue') {
+  p1 <- ggplot() +
+    geom_point(aes(x = fitted(model), y = resid(model)), color = pcol) +
+    geom_hline(yintercept = 0, color = lcol) +
+    labs(x = "Fitted", y = "Residuals", title = "Fitted versus Residuals") +
+    theme_light()
+  
+  p2 <- ggplot(data.frame(y = resid(model)), aes(sample = y)) + 
+    stat_qq(color = pcol) + 
+    stat_qq_line(color = lcol) +
+    labs(x = "Theoretical", y = "Sample", title = "Normal Q-Q Plot") +
+    theme_light()
+  
+  ggarrange(p1, p2, ncol = 2)
+}
+```
+
+## Data cleaning
+
+In the data cleaning part, we did the following:
+
+1. Changed the variable type of age and sex from character to numeric
+2. Renamed several variables
+3. For each year, we calculated the sums with different conditions
+4. GDP was originally in numbers with commas inside, we removed these commas and turned the GDP to numeric
+5. Factorized sex and generation
+
+```{r}
+n <- nrow(suicide)
+buffer <- rep(0, n)
+
+sex <- buffer
+sex[suicide$sex == 'male'] <- 1
+
+age <- buffer
+age[suicide$age == '5-14 years'] <- 10
+age[suicide$age == '15-24 years'] <- 20
+age[suicide$age == '25-34 years'] <- 30
+age[suicide$age == '35-54 years'] <- 45
+age[suicide$age == '55-74 years'] <- 65
+age[suicide$age == '75+ years'] <- 85
+
+suicide <- suicide %>%
+  select(-one_of('age', 'sex')) %>%
+  add_column(age, sex) %>%
+  rename(gdp_year = gdp_for_year...., 
+         gdp_per_capita = gdp_per_capita...., 
+         hdi_year = HDI.for.year)
+
+suicide$suicide_year <- buffer
+suicide$suicide_year_female <- buffer
+suicide$suicide_year_male <- buffer
+suicide$population_year <- buffer
+
+for (country_year in unique(suicide$country.year)) {
+  data_curr <- suicide[suicide$country.year == country_year,]
+  
+  suicide_year_curr <- sum(data_curr$suicides_no)
+  suicide_year_female_curr <- sum(data_curr[data_curr$sex == 0,]$suicides_no)
+  suicide_year_male_curr <- sum(data_curr[data_curr$sex == 1,]$suicides_no)
+  population_year_curr <- sum(data_curr[data_curr$sex == 1,]$population)
+  
+  suicide[suicide$country.year == country_year,]$suicide_year <- suicide_year_curr
+  suicide[suicide$country.year == country_year,]$suicide_year_female <- suicide_year_female_curr
+  suicide[suicide$country.year == country_year,]$suicide_year_male <- suicide_year_male_curr
+  suicide[suicide$country.year == country_year,]$population_year <- population_year_curr
+}
+
+suicide$gdp_year = as.numeric(gsub(",", "", suicide$gdp_year))
+suicide$sex = as.factor(suicide$sex)
+suicide$age = as.factor(suicide$age)
+suicide$generation = as.factor(suicide$generation)
+
+head(suicide)
+```
+
+## Pre-analysis
+
+In the last part, we found that HDI could be replaced by log(GDP), since the linear model with the response of HDI and predictor of log(GDP) has a R-squared value over 0.8. Considering the HDI variables contains quite some number of NA, we decided to use log(GDP) in the later analysis.
+```{r}
+hist_suicide_year <- ggplot(suicide) +
+  geom_histogram(aes(x = suicide_year, y = ..density..), binwidth = 100) +
+  theme_light()
+
+hist_suicide_100k <- ggplot(suicide) +
+  geom_histogram(aes(x = suicides.100k.pop, y = ..density..), binwidth = 1) +
+  theme_light()
+
+pie_sex <- ggplot(suicide, aes(x = "", y = suicides_no, fill = sex)) +
+  geom_bar(stat="identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void()
+
+pie_age <- ggplot(suicide, aes(x = "", y = suicides_no, fill = age)) +
+  geom_bar(stat="identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void()
+
+pie_gen <- ggplot(suicide, aes(x = "", y = suicides_no, fill = generation)) +
+  geom_bar(stat="identity", width = 1) +
+  coord_polar("y", start = 0) +
+  theme_void()
+
+df_suicide_gdp <- suicide %>%
+  distinct(country.year, .keep_all = TRUE)
+
+point_gdp_cap <- ggplot(df_suicide_gdp) +
+  geom_point(aes(x = gdp_per_capita, y = suicide_year))
+
+point_gdp_year <- ggplot(df_suicide_gdp) +
+  geom_point(aes(x = gdp_year, y = suicide_year))
+
+list_year = sort(unique(df_suicide_gdp$year))
+suicide_by_year <- c()
+for (year in list_year) {
+  suicide_by_year[length(suicide_by_year) + 1] <- sum(df_suicide_gdp[df_suicide_gdp$year == year,]$suicide_year)
+}
+
+f_trend <- ggplot() +
+  geom_line(aes(x = list_year, y = suicide_by_year))
+
+ggarrange(hist_suicide_year, hist_suicide_100k, ncol = 2)
+ggarrange(pie_sex, pie_age, pie_gen, ncol = 3)
+ggarrange(point_gdp_cap, point_gdp_year, f_trend, ncol = 3)
+
+suicide %>%
+  select(one_of('year', 'suicide_no', 'population', 'suicides.100k.pop', 'gdp_year', 'gdp_per_capita')) %>%
+  pairs(col = 'darkorange')
+
+plot(log(suicide$gdp_per_capita), suicide$hdi_year)
+m_hdi_gdp <- lm(hdi_year ~ log(gdp_per_capita), data = suicide)
+summary(m_hdi_gdp)$adj.r.squared
+```
+
+
+## Modelling
+```{r}
+m0_suicide <- lm(suicides.100k.pop ~ population + gdp_year + age + sex + log(gdp_per_capita), data = suicide)
+
+m0_suicide_aic <- step(m0_suicide, trace = 0)
+
+m1_suicide <- lm(suicides.100k.pop ~ (population + gdp_year + age + sex + log(gdp_per_capita)) ^ 5, data = suicide)
+
+m1_suicide_aic <- step(m1_suicide, trace = 0)
+
+m2_suicide <- lm(suicides.100k.pop ~ (population + gdp_year + age + sex + log(population) + log(gdp_year)) ^ 2, data = suicide)
+
+m2_suicide_aic <- step(m2_suicide, trace = 0)
+
+m3_suicide <- lm(suicides.100k.pop ~ I(population ^ -1) + gdp_year + age + sex + log(gdp_per_capita), data = suicide)
+
+m3_suicide_aic <- step(m0_suicide, trace = 0, k = log(n), direction = 'backward')
+
+model1 = lm(suicides.100k.pop ~ hdi_year + gdp_year + generation + age + sex + population, data = suicide)
+selected1 = step(model1, direction = "backward", trace = FALSE)
+
+model2 = lm(suicides.100k.pop ~ hdi_year * gdp_year * generation * age * sex * population, data = suicide)
+selected2 = step(model2, direction = "backward", trace = FALSE)
+
+model3 = lm(suicides.100k.pop ~ gdp_per_capita * age * sex, data = suicide )
+selected3 = step(model3, direction = "backward", trace = FALSE)
+
+model4 = lm(suicides.100k.pop ~ sex * age * gdp_per_capita * generation, data = suicide)
+selected4 = step(model4, direction = "backward", trace = FALSE)
+
+results_all <- rbind(get_all(m0_suicide),
+                     get_all(m0_suicide_aic),
+                     get_all(m1_suicide),
+                     get_all(m1_suicide_aic),
+                     get_all(m2_suicide),
+                     get_all(m2_suicide_aic),
+                     get_all(m3_suicide),
+                     get_all(m3_suicide_aic),
+                     get_all(model2))
+
+results_all
+vif(m0_suicide)
+```
+
+From the table above, compare all criterions, we choose m1_suicide_aic, m2_suicide_aic and model2 to do further investigate.
+
+```{r}
+AIC_and_predictors = data.frame(
+  "AIC" = c("m2_suicide" = extractAIC(m2_suicide_aic)[2],
+            "m1_suicide" = extractAIC(m1_suicide_aic)[2],
+            "model2" = extractAIC(selected2)[2]),
+  "Predictors" = c("m2_suicide" = extractAIC(m2_suicide_aic)[1],
+                   "m1_suicide" = extractAIC(m1_suicide_aic)[1],
+                   "model2" = extractAIC(selected2)[1])
+                              )
+
+kable(AIC_and_predictors)
+```
+
+From the table above, we can see that model2 has the smallest AIC, However, it has 145 predictors which increase complexity to the model. Since predictor is a significant criterion as well, we can believe that m2_suicide might be the best model because it has 45 predictors.
+
+However, to make the final decision, we will use a f test to see which model is better.
+
+```{r}
+anova(m2_suicide_aic, selected2)
+```
+
+Then what we do next is to check Normality and Homoscedasticity.
+
+```{r}
+qq_plot(m2_suicide_aic)
+```
+
+In table before, we know that our models rejects Breusch-Pagan Test's null hypothesis that the errors have constant variance. Though assumptions do not hold, we have tried our best to find the fitted model. 
+
+To detect overfitting, we use LOOCV-RMSE, we can see from previous plot that all models' LOOCV-RMSE has small difference. So this criterion helps little to our selection.
+
+# Results
+
+```{r}
+m2_result = data.frame("AIC" = extractAIC(m2_suicide_aic)[2],
+                       "Predictors" = extractAIC(m2_suicide_aic)[1],
+                       "R.Squared" = get_r2(m2_suicide_aic),
+                       "Adj.R.Squared" = get_adj_r2(m2_suicide_aic),
+                       "LOOCV-RMSE" = calc_loocv_rmse(m2_suicide_aic),
+                       "Cook's Distance" = cooks_distance_inf(m2_suicide_aic),
+                       "BP-Test Result" = bp_test_decision(m2_suicide_aic,0.1))
+
+kable(m2_result)
+```
+
+Fitted vs Residual plot and QQNorm Plot:
+
+```{r}
+qq_plot(m2_suicide_aic)
+```
+
+In conclusion, above all possible models, we consider m2_suicide is the best model for following reasons:
+
+a. It has a relatively big $R^2$, meaning a corresponding portion of data can be explained by the model.
+
+b. It has a relatively adjusted $R^2$, judging the goodness that the model fit the data. Though it doesn't have the biggest adjusted $R^2$, it performs better in other ways.
+
+c. The AIC result is acceptable. Our chosen model's AIC is smaller than another possible model m2_suicide. 
+
+d. Acceptable predictor number. Although its AIC is bigger model2's AIC, it has smaller number of predictors than model2 do. The more predictors, the more complexity.
+
+## Tables and plots of the models
+
+# Discussion
+
+# Appendix
+
+
+
+
+
