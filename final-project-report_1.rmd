@@ -59,32 +59,32 @@ bp_test_decision = function(model, alpha){
   ifelse(decide, "Reject", "Fail to Reject")
 }
 
-cooks_distance_inf = function(model){
+cooks_distance_inf <- function(model){
   mods_cd = cooks.distance(model)
   sum(ifelse(mods_cd > 4/length(resid(model)), 1, 0))
 }
 
-calc_loocv_rmse = function(model){
+calc_loocv_rmse <- function(model){
   sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
 }
 
-calc_rmse = function(actual, predicted) {
+calc_rmse <- function(actual, predicted) {
   sqrt(sum((actual - predicted)^2) / length(actual)) 
 }
 
-get_t_pval = function(model){
+get_t_pval <- function(model){
   summary(model)$coefficients[,"Pr(>|t|)"]
 }
 
-get_f_pval = function(model1, model2){
+get_f_pval <- function(model1, model2){
   anova(model1, model2)[2,"Pr(>F)"]
 }
 
-get_adj_r2 = function(model){
+get_adj_r2 <- function(model){
   summary(model)$adj.r.squared
 }
 
-get_r2 = function(model){
+get_r2 <- function(model){
   summary(model)$r.squared
 }
 
@@ -246,32 +246,28 @@ summary(m_hdi_gdp)$adj.r.squared
 ## Modelling
 ```{r}
 m0_suicide <- lm(suicides.100k.pop ~ population + gdp_year + age + sex + log(gdp_per_capita), data = suicide)
-
 m0_suicide_aic <- step(m0_suicide, trace = 0)
 
 m1_suicide <- lm(suicides.100k.pop ~ (population + gdp_year + age + sex + log(gdp_per_capita)) ^ 5, data = suicide)
-
 m1_suicide_aic <- step(m1_suicide, trace = 0)
 
 m2_suicide <- lm(suicides.100k.pop ~ (population + gdp_year + age + sex + log(population) + log(gdp_year)) ^ 2, data = suicide)
-
 m2_suicide_aic <- step(m2_suicide, trace = 0)
 
 m3_suicide <- lm(suicides.100k.pop ~ I(population ^ -1) + gdp_year + age + sex + log(gdp_per_capita), data = suicide)
+m3_suicide_aic <- step(m0_suicide, trace = 0)
 
-m3_suicide_aic <- step(m0_suicide, trace = 0, k = log(n), direction = 'backward')
+m4_suicide <- lm(suicides.100k.pop ~ log(gdp_per_capita) + gdp_year + generation + age + sex + population, data = suicide)
+m4_suicide_aic <- step(m4_suicide, trace = 0)
 
-model1 = lm(suicides.100k.pop ~ hdi_year + gdp_year + generation + age + sex + population, data = suicide)
-selected1 = step(model1, direction = "backward", trace = FALSE)
+m5_suicide <- lm(suicides.100k.pop ~ log(gdp_per_capita) * gdp_year * generation * age * sex * population, data = suicide)
+m5_suicide_aic <- step(m5_suicide, trace = 0)
 
-model2 = lm(suicides.100k.pop ~ hdi_year * gdp_year * generation * age * sex * population, data = suicide)
-selected2 = step(model2, direction = "backward", trace = FALSE)
+m6_suicide <- lm(suicides.100k.pop ~ log(gdp_per_capita) * age * sex, data = suicide )
+m6_suicide_aic <- step(m6_suicide, trace = 0)
 
-model3 = lm(suicides.100k.pop ~ gdp_per_capita * age * sex, data = suicide )
-selected3 = step(model3, direction = "backward", trace = FALSE)
-
-model4 = lm(suicides.100k.pop ~ sex * age * gdp_per_capita * generation, data = suicide)
-selected4 = step(model4, direction = "backward", trace = FALSE)
+m7_suicide <- lm(suicides.100k.pop ~ sex * age * log(gdp_per_capita) * generation, data = suicide)
+m7_suicide_aic <- step(m7_suicide, trace = 0)
 
 results_all <- rbind(get_all(m0_suicide),
                      get_all(m0_suicide_aic),
@@ -281,23 +277,28 @@ results_all <- rbind(get_all(m0_suicide),
                      get_all(m2_suicide_aic),
                      get_all(m3_suicide),
                      get_all(m3_suicide_aic),
-                     get_all(model2))
+                     get_all(m4_suicide),
+                     get_all(m4_suicide_aic),
+                     get_all(m5_suicide),
+                     get_all(m5_suicide_aic),
+                     get_all(m6_suicide),
+                     get_all(m6_suicide_aic),
+                     get_all(m7_suicide),
+                     get_all(m7_suicide_aic))
 
-results_all
-vif(m0_suicide)
+kable(results_all)
 ```
 
-From the table above, compare all criterions, we choose m1_suicide_aic, m2_suicide_aic and model2 to do further investigate.
+From the table above, compare all criterions, we choose m1_suicide_aic, m2_suicide_aic and m5_suicide_aic to do further investigate.
 
 ```{r}
-AIC_and_predictors = data.frame(
-  "AIC" = c("m2_suicide" = extractAIC(m2_suicide_aic)[2],
-            "m1_suicide" = extractAIC(m1_suicide_aic)[2],
-            "model2" = extractAIC(selected2)[2]),
-  "Predictors" = c("m2_suicide" = extractAIC(m2_suicide_aic)[1],
-                   "m1_suicide" = extractAIC(m1_suicide_aic)[1],
-                   "model2" = extractAIC(selected2)[1])
-                              )
+AIC_and_predictors <- data.frame(
+  "AIC" = c("m2_suicide_aic" = extractAIC(m2_suicide_aic)[2],
+            "m1_suicide_aic" = extractAIC(m1_suicide_aic)[2],
+            "m5_suicide_aic" = extractAIC(m5_suicide_aic)[2]),
+  "Predictors" = c("m2_suicide_aic" = extractAIC(m2_suicide_aic)[1],
+                   "m1_suicide_aic" = extractAIC(m1_suicide_aic)[1],
+                   "m5_suicide_aic" = extractAIC(m5_suicide_aic)[1]))
 
 kable(AIC_and_predictors)
 ```
@@ -307,7 +308,8 @@ From the table above, we can see that model2 has the smallest AIC, However, it h
 However, to make the final decision, we will use a f test to see which model is better.
 
 ```{r}
-anova(m2_suicide_aic, selected2)
+m_suicide_empty <- lm(suicides.100k.pop ~ 1, data = suicide)
+anova(m2_suicide_aic, m_suicide_empty)
 ```
 
 Then what we do next is to check Normality and Homoscedasticity.
